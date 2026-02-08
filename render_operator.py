@@ -10,10 +10,9 @@ import time
 import traceback
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from . import preferences
 from .property_groups import AnimationSetPropertyGroup, MaterialSetPropertyGroup, ReportingPropertyGroup, SpritesheetPropertyGroup
 from .util import Camera as CameraUtil
-from .util import ImageMagick
+from .util import SpriteSheet
 from .util.TerminalOutput import TerminalWriter
 from .util.SceneSnapshot import SceneSnapshot
 from .util import StringUtil
@@ -35,7 +34,6 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
             original_reason = cls.renderDisabledReason
 
             validators = [
-                cls._validate_image_magick_install,
                 cls._validate_animation_options,
                 cls._validate_camera_options,
                 cls._validate_material_options,
@@ -92,14 +90,6 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         if not is_valid:
             return (False, "Camera Options are invalid: " + err)
-
-        return (True, None)
-
-    @classmethod
-    def _validate_image_magick_install(cls, _context: bpy.types.Context) -> Tuple[bool, Optional[str]]:
-        # TODO(Phase 2): Remove this validator once ImageMagick is replaced with native assembly
-        if not preferences.PrefsAccess.image_magick_path:
-            return (False, "ImageMagick path is not set in Addon Preferences.")
 
         return (True, None)
 
@@ -257,16 +247,6 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         self._terminal_writer.write("\n\n---------- Starting spritesheet render job ----------\n\n")
 
-        # TODO(Phase 2): Replace ImageMagick validation with native assembly check
-        try:
-            succeeded, error = ImageMagick.validate_image_magick_at_path()
-            if not succeeded:
-                self._error = "ImageMagick check failed\n" + error
-                return
-        except Exception:
-            self._error = "Failed to validate ImageMagick executable. Check that the path is correct in Addon Preferences."
-            return
-
         self._set_render_settings(context)
         self._terminal_writer.clear()
 
@@ -366,12 +346,12 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                         # files before processing the next animation
                         if separate_files_per_animation:
                             self._terminal_writer.write(f"\nCombining image files for animation set {animation_set_number} of {len(animation_sets)}\n")
-                            image_magick_result = self._run_image_magick(props, reporting_props, material_set_index, animation_set, frames_since_last_output, temp_dir_path, rotation_angle)
+                            assembly_result = self._assemble_spritesheet(props, reporting_props, material_set_index, animation_set, frames_since_last_output, temp_dir_path, rotation_angle)
 
-                            if not image_magick_result["succeeded"]: # error running ImageMagick
+                            if not assembly_result["succeeded"]:
                                 return
 
-                            self._create_json_file(props, reporting_props, material_sets, render_data, image_magick_result)
+                            self._create_json_file(props, reporting_props, material_sets, render_data, assembly_result)
                             self._terminal_writer.write("\n")
 
                             frames_since_last_output = 0
@@ -395,12 +375,12 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                     self._terminal_writer.indent += 1
 
                     # Output one file for the whole rotation, with all animations in it
-                    image_magick_result = self._run_image_magick(props, reporting_props, material_set_index, None, frames_since_last_output, temp_dir_path, rotation_angle)
+                    assembly_result = self._assemble_spritesheet(props, reporting_props, material_set_index, None, frames_since_last_output, temp_dir_path, rotation_angle)
 
-                    if not image_magick_result["succeeded"]:
+                    if not assembly_result["succeeded"]:
                         return
 
-                    self._create_json_file(props, reporting_props, material_sets, render_data, image_magick_result)
+                    self._create_json_file(props, reporting_props, material_sets, render_data, assembly_result)
                     self._terminal_writer.write("\n")
                     self._terminal_writer.indent -= 1
 
@@ -418,12 +398,12 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                 self._terminal_writer.indent += 1
 
                 # Output one file for the entire material
-                image_magick_result = self._run_image_magick(props, reporting_props, material_set_index, None, frames_since_last_output, temp_dir_path, None)
+                assembly_result = self._assemble_spritesheet(props, reporting_props, material_set_index, None, frames_since_last_output, temp_dir_path, None)
 
-                if not image_magick_result["succeeded"]:
+                if not assembly_result["succeeded"]:
                     return
 
-                self._create_json_file(props, reporting_props, material_sets, render_data, image_magick_result)
+                self._create_json_file(props, reporting_props, material_sets, render_data, assembly_result)
                 self._terminal_writer.write("\n")
                 self._terminal_writer.indent -= 1
 
@@ -483,7 +463,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         return output_file_path
 
-    def _create_json_file(self, props: SpritesheetPropertyGroup, reporting_props: ReportingPropertyGroup, material_sets: List[MaterialSetPropertyGroup], render_data: Dict[str, Any], image_magick_data: Dict[str, Any]):
+    def _create_json_file(self, props: SpritesheetPropertyGroup, reporting_props: ReportingPropertyGroup, material_sets: List[MaterialSetPropertyGroup], render_data: Dict[str, Any], assembly_data: Dict[str, Any]):
         job_id = self._get_next_job_id()
         self._report_job("JSON dump", "writing JSON attributes", job_id, reporting_props)
 
@@ -499,7 +479,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
             self._report_job("JSON dump", "JSON file already written at " + json_file_path, job_id, reporting_props, is_skipped = True)
             return
 
-        padding: Tuple[int, int] = image_magick_data["args"]["padding"] if "padding" in image_magick_data["args"] else (0, 0)
+        padding: Tuple[int, int] = assembly_data["args"]["padding"] if "padding" in assembly_data["args"] else (0, 0)
 
         json_data = {
             "baseObjectName": utils.blend_file_name(default_value = "object"),
@@ -507,8 +487,8 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
             "spriteHeight": props.sprite_size[1],
             "paddingWidth": padding[0],
             "paddingHeight": padding[1],
-            "numColumns": image_magick_data["args"]["numColumns"],
-            "numRows": image_magick_data["args"]["numRows"]
+            "numColumns": assembly_data["args"]["numColumns"],
+            "numRows": assembly_data["args"]["numRows"]
         }
 
         if props.material_options.control_materials:
@@ -552,13 +532,13 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                 if in_data["rotation"] is not None:
                     out_data["rotation"] = in_data["rotation"]
 
-                # The starting frame may not match the expected value, depending on what order ImageMagick combined
-                # the files in. We need to find the matching file in the ImageMagick arguments to figure out the frame number.
-                out_data["startFrame"] = image_magick_data["args"]["inputFiles"].index(in_data["firstFrameFilepath"])
+                # The starting frame may not match the expected value, depending on what order the assembler combined
+                # the files in. We need to find the matching file in the assembly arguments to figure out the frame number.
+                out_data["startFrame"] = assembly_data["args"]["inputFiles"].index(in_data["firstFrameFilepath"])
 
                 json_data["animations"].append(out_data)
             else:
-                out_data["frame"] = image_magick_data["args"]["inputFiles"].index(in_data["filepath"])
+                out_data["frame"] = assembly_data["args"]["inputFiles"].index(in_data["filepath"])
 
                 if in_data["rotation"] is not None:
                     out_data["rotation"] = in_data["rotation"]
@@ -870,55 +850,54 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         reporting_props.current_frame_num += 1
 
-    # TODO(Phase 2): Replace _run_image_magick with native Python spritesheet assembly
-    def _run_image_magick(self, props: SpritesheetPropertyGroup, reporting_props: ReportingPropertyGroup, material_set_index: int, animation_set: AnimationSetPropertyGroup,
-                          total_num_frames: int, temp_dir_path: str, rotation_angle: int) -> Dict[str, Any]:
+    def _assemble_spritesheet(self, props: SpritesheetPropertyGroup, reporting_props: ReportingPropertyGroup, material_set_index: int, animation_set: AnimationSetPropertyGroup,
+                              total_num_frames: int, temp_dir_path: str, rotation_angle: int) -> Dict[str, Any]:
         job_id = self._get_next_job_id()
-        self._report_job("ImageMagick", f"Combining {total_num_frames} frames into spritesheet with ImageMagick", job_id, reporting_props)
+        self._report_job("Spritesheet", f"Combining {total_num_frames} frames into spritesheet", job_id, reporting_props)
 
         output_file_path = self._create_file_path(props, material_set_index, animation_set, rotation_angle, include_material_set = props.material_options.control_materials) + ".png"
-        image_magick_output = ImageMagick.assemble_frames_into_spritesheet(props.sprite_size, total_num_frames, temp_dir_path, output_file_path)
+        assembly_output = SpriteSheet.assemble_frames_into_spritesheet(props.sprite_size, total_num_frames, temp_dir_path, output_file_path)
 
-        if not image_magick_output["succeeded"]:
-            self._error = str(image_magick_output["stderr"]).replace("\\n", "\n").replace("\\r", "\r")
-            self._report_job("ImageMagick", self._error, job_id, reporting_props, is_error = True)
+        if not assembly_output["succeeded"]:
+            self._error = str(assembly_output["stderr"])
+            self._report_job("Spritesheet", self._error, job_id, reporting_props, is_error = True)
         else:
-            self._report_job("ImageMagick", f"output file is at {output_file_path}", job_id, reporting_props, is_complete = True)
+            self._report_job("Spritesheet", f"output file is at {output_file_path}", job_id, reporting_props, is_complete = True)
 
         if props.pad_output_to_power_of_two:
             job_id = self._get_next_job_id()
-            image_size = image_magick_output["args"]["outputImageSize"]
+            image_size = assembly_output["args"]["outputImageSize"]
             target_size = (self._next_power_of_two(image_size[0]), self._next_power_of_two(image_size[1]))
             target_size_str = "{}x{}".format(target_size[0], target_size[1])
 
-            image_magick_output["args"]["outputImageSize"] = target_size
+            assembly_output["args"]["outputImageSize"] = target_size
 
             if target_size == image_size:
-                self._report_job("ImageMagick", "Padding not necessary; image output size {} is already power-of-two".format(target_size_str), job_id, reporting_props, is_skipped = True)
+                self._report_job("Spritesheet", "Padding not necessary; image output size {} is already power-of-two".format(target_size_str), job_id, reporting_props, is_skipped = True)
             else:
-                self._report_job("ImageMagick", f"Padding output image to power-of-two size {target_size_str}", job_id, reporting_props)
-                ImageMagick.pad_image_to_size(image_magick_output["args"]["outputFilePath"], target_size)
-                self._report_job("ImageMagick", f"Output image successfully padded to power-of-two size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
+                self._report_job("Spritesheet", f"Padding output image to power-of-two size {target_size_str}", job_id, reporting_props)
+                SpriteSheet.pad_image_to_size(assembly_output["args"]["outputFilePath"], target_size)
+                self._report_job("Spritesheet", f"Output image successfully padded to power-of-two size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
 
                 # Record padding in JSON for tool integration
                 padding_amount = (target_size[0] - image_size[0], target_size[1] - image_size[1])
-                image_magick_output["args"]["padding"] = padding_amount
+                assembly_output["args"]["padding"] = padding_amount
 
         if props.force_image_to_square:
             job_id = self._get_next_job_id()
-            image_size = image_magick_output["args"]["outputImageSize"]
+            image_size = assembly_output["args"]["outputImageSize"]
             max_dim = max(image_size)
             target_size = (max_dim, max_dim)
             target_size_str = f"{max_dim}x{max_dim}"
 
-            image_magick_output["args"]["outputImageSize"] = target_size
+            assembly_output["args"]["outputImageSize"] = target_size
 
             # Unlike padding to power-of-two, we can't check the current size, because it could include transparency to trim
-            self._report_job("ImageMagick", f"Forcing output image to square size {target_size_str}", job_id, reporting_props)
-            ImageMagick.trim_and_resize_image_ignore_aspect(image_magick_output["args"]["outputFilePath"], target_size)
-            self._report_job("ImageMagick", f"Output image successfully trimmed and resized to square size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
+            self._report_job("Spritesheet", f"Forcing output image to square size {target_size_str}", job_id, reporting_props)
+            SpriteSheet.trim_and_resize_image_ignore_aspect(assembly_output["args"]["outputFilePath"], target_size)
+            self._report_job("Spritesheet", f"Output image successfully trimmed and resized to square size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
 
-        return image_magick_output
+        return assembly_output
 
     def _set_render_settings(self, context: bpy.types.Context):
         scene = context.scene

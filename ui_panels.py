@@ -365,9 +365,6 @@ class SPRITESHEET_PT_JobManagementPanel(BaseAddonPanel, bpy.types.Panel):
         reason_lower = SPRITESHEET_OT_RenderSpritesheetOperator.renderDisabledReason.lower()
         if "addon preferences" in reason_lower:
             box.operator("spritesheet.showprefs", text = "Show Addon Preferences")
-
-            if "imagemagick" in reason_lower:
-                box.operator("spritesheet.prefs_locate_imagemagick", text = "Locate Automatically")
         elif "orthographic" in reason_lower:
             box.operator("spritesheet.configure_render_camera", text = f"Make Camera \"{props.camera_options.render_camera.name}\" Ortho")
 
