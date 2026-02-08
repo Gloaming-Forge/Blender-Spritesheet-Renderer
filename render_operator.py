@@ -444,10 +444,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         completion_message = "Rendering complete in " + time_string if sanity_checks_passed else "Rendering FAILED after " + time_string
 
         # Final output: show operator total time and a large completion message to be easily noticed
-        try:
-            term_cols = os.get_terminal_size().columns
-        except (ValueError, OSError):
-            term_cols = 80  # fallback for background/headless mode
+        term_cols = self._get_terminal_columns()
         self._terminal_writer.write("\n")
         self._terminal_writer.write(term_cols * "=" + "\n")
         self._terminal_writer.write((term_cols // 2) * " " + completion_message + "\n")

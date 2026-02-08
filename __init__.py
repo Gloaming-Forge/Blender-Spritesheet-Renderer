@@ -77,15 +77,18 @@ def check_animation_state():
     """Periodically check whether animations are playing so we can keep our animation set
     status up-to-date. Unfortunately there's no event handler for animation playback
     starting/stopping."""
-    # Guard against missing screen context (e.g. background/headless mode)
+    # context.screen is None in --background mode
+    screen = getattr(bpy.context, 'screen', None)
+    if screen is None:
+        return 1.0
+
     try:
-        screen = bpy.context.screen
-        if screen is None or not screen.is_animation_playing:
+        if not screen.is_animation_playing:
             props = bpy.context.scene.SpritesheetPropertyGroup
             for animation_set in props.animation_options.animation_sets:
                 animation_set.is_previewing = False
-    except (AttributeError, RuntimeError):
-        # context.screen doesn't exist in --background mode; silently skip
+    except RuntimeError:
+        # Context may be temporarily invalid (e.g. during file load)
         pass
 
     return 1.0  # check every second
@@ -97,8 +100,8 @@ def _find_image_magick_exe():
     try:
         if not preferences.PrefsAccess.image_magick_path:
             bpy.ops.spritesheet.prefs_locate_imagemagick()
-    except Exception:
-        pass  # Non-critical; user can set path manually
+    except Exception as e:
+        print(f"[SpritesheetRenderer] Auto-detect ImageMagick failed: {e}")
 
 
 @persistent
