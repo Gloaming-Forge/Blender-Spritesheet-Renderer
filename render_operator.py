@@ -931,8 +931,11 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         scene.render.image_settings.file_format = 'PNG'
         scene.render.image_settings.color_mode = 'RGBA'
         scene.render.film_transparent = True  # Transparent PNG
-        # bake_margin was renamed to bake_margin_size in Blender 3.6+
-        if hasattr(scene.render, 'bake_margin_size'):
+        # bake_margin moved to scene.render.bake.margin in 5.0,
+        # was renamed to bake_margin_size in 3.6, was bake_margin before that
+        if hasattr(scene.render, 'bake') and hasattr(scene.render.bake, 'margin'):
+            scene.render.bake.margin = 0
+        elif hasattr(scene.render, 'bake_margin_size'):
             scene.render.bake_margin_size = 0
         elif hasattr(scene.render, 'bake_margin'):
             scene.render.bake_margin = 0

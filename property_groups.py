@@ -147,7 +147,7 @@ class AnimationSetPropertyGroup(bpy.types.PropertyGroup):
                 raise ValueError(f"Animation target \"{prop.target.name}\" has animation data that cannot be modified. It may be in tweak mode in Nonlinear Animation.")
 
         for prop in self.actions:
-            prop.target.animation_data.action = prop.action
+            utils.set_action_on_object(prop.target, prop.action)
 
     def get_frame_data(self) -> Optional[Tuple[int, int, int]]:
         frames = self.get_frames_to_render()
@@ -292,8 +292,11 @@ class MaterialSetTargetPropertyGroup(bpy.types.PropertyGroup):
         return obj_type in {"GPENCIL", "GREASEPENCIL"}
 
     def _is_mat_valid_for_target(self, mat):
+        # is_grease_pencil may not exist in Blender 5.0+ (GP v3 rewrite)
+        is_gp_mat = getattr(mat, 'is_grease_pencil', False)
+
         # Non-grease-pencil materials are valid for everything
-        if not mat.is_grease_pencil:
+        if not is_gp_mat:
             return True
 
         # Grease pencil materials can only be used with grease pencil objects
@@ -327,8 +330,11 @@ class MaterialSetPropertyGroup(bpy.types.PropertyGroup):
         self["name"] = value
 
     def _is_mat_valid_to_share(self, mat):
+        # is_grease_pencil may not exist in Blender 5.0+ (GP v3 rewrite)
+        is_gp_mat = getattr(mat, 'is_grease_pencil', False)
+
         # Non-grease-pencil materials are valid for everything
-        if not mat.is_grease_pencil:
+        if not is_gp_mat:
             return True
 
         if all(item.target is not None and MaterialSetTargetPropertyGroup._is_grease_pencil_type(item.target.type) for item in self.materials):
