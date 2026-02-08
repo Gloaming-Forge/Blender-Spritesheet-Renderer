@@ -20,6 +20,7 @@ class SPRITESHEET_OT_ConfigureRenderCameraOperator(bpy.types.Operator):
         props.camera_options.render_camera.type = "ORTHO"
         return {'FINISHED'}
 
+# TODO(Phase 2): Remove this operator once ImageMagick dependency is eliminated
 class SPRITESHEET_OT_LocateImageMagickOperator(bpy.types.Operator):
     bl_idname = "spritesheet.prefs_locate_imagemagick"
     bl_label = "Locate ImageMagick Installation"
@@ -239,7 +240,7 @@ class SPRITESHEET_OT_PlayAnimationSetOperator(bpy.types.Operator):
         context.scene.render.fps = animation_set.output_frame_rate
 
         # For some reason animation_play will pause if something is playing, and that's not what we want for this operator
-        if not context.screen.is_animation_playing:
+        if not getattr(context.screen, 'is_animation_playing', False):
             bpy.ops.screen.animation_play()
 
         # Update all other sets so their UI shows correctly
@@ -294,8 +295,8 @@ class SPRITESHEET_OT_RemoveAnimationSetOperator(bpy.types.Operator):
         animation_set = props.animation_options.animation_sets[self.index]
 
         # Cancel animation if we're removing the active preview; not necessary but nice to have
-        if animation_set.is_previewing and context.screen.is_animation_playing:
-            bpy.ops.screen.animation_cancel(restore_frame = False)
+        if animation_set.is_previewing and getattr(context.screen, 'is_animation_playing', False):
+            bpy.ops.screen.animation_cancel(restore_frame=False)
 
         props.animation_options.animation_sets.remove(self.index)
 

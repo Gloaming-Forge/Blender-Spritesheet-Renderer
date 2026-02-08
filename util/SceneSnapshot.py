@@ -1,6 +1,8 @@
 import bpy
 from mathutils import Vector
-from typing import Dict, Set
+from typing import Dict, Optional, Set
+
+from .. import utils
 
 class SceneSnapshot:
 
@@ -64,8 +66,11 @@ class SceneSnapshot:
             self._restore_materials()
 
     def _restore_actions(self):
-        for obj, action in self._actions.items():
-            obj.animation_data.action = action
+        for obj, (action, action_slot) in self._actions.items():
+            utils.set_action_on_object(obj, action)
+            # Restore the original slot if the slot system exists
+            if action_slot is not None and hasattr(obj.animation_data, 'action_slot'):
+                obj.animation_data.action_slot = action_slot
 
     def _restore_camera(self, context):
         props = context.scene.SpritesheetPropertyGroup
@@ -88,14 +93,17 @@ class SceneSnapshot:
     def _snapshot_actions(self, context: bpy.types.Context):
         props = context.scene.SpritesheetPropertyGroup
 
-        self._actions: Dict[bpy.types.Object, bpy.types.Action] = {}
+        # Store (action, action_slot) tuples to support Blender 5.0+ slotted actions
+        self._actions: Dict[bpy.types.Object, tuple] = {}
 
         for animation_set in props.animation_options.animation_sets:
             objects = [a.target for a in animation_set.actions if a.target]
 
             for obj in objects:
                 obj.animation_data_create()
-                self._actions[obj] = obj.animation_data.action
+                action = obj.animation_data.action
+                action_slot = getattr(obj.animation_data, 'action_slot', None)
+                self._actions[obj] = (action, action_slot)
 
     def _snapshot_camera(self, context: bpy.types.Context):
         props = context.scene.SpritesheetPropertyGroup

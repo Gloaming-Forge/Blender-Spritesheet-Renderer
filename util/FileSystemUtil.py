@@ -1,47 +1,59 @@
 import platform
-import string
 import subprocess
 from typing import List
 
-#pylint: disable=import-outside-toplevel
 
 def get_file_systems() -> List[str]:
+    """Get available file system roots. Returns drive letters on Windows, ['/'] on Unix."""
     system = get_system_type()
-    file_systems = []
 
     if system == "windows":
+        import string
         from ctypes import windll
 
-        # Windows: we're given a bit mask where each bit position corresponds to a drive letter
-        # Credit: https://stackoverflow.com/a/827398/
+        file_systems = []
         bitmask = windll.kernel32.GetLogicalDrives()
 
         for letter in string.ascii_uppercase:
             if bitmask & 1:
                 file_systems.append(letter + ":\\")
-
             bitmask >>= 1
 
-    return file_systems
+        return file_systems
+
+    # Linux/macOS: root filesystem
+    return ["/"]
+
 
 def get_system_type() -> str:
-    """Attempts to determine what type of system we're on, limited to systems this addon can usefully do things with"""
+    """Determine the current operating system type."""
+    system = platform.system().lower()
 
-    system = platform.uname()[0].lower()
-
-    if system in ["windows"]:
-        return system
+    if system == "windows":
+        return "windows"
+    elif system == "linux":
+        return "linux"
+    elif system == "darwin":
+        return "macos"
 
     return "unknown"
 
+
 def open_file_explorer(dir_path: str) -> bool:
+    """Open the system file explorer to the given directory path."""
     if not dir_path:
-        raise ValueError("openFileExplorer called with empty dirPath argument ({})".format(dir_path))
+        raise ValueError(f"open_file_explorer called with empty dir_path argument ({dir_path})")
 
     system = get_system_type()
 
     if system == "windows":
-        subprocess.Popen('explorer "{}"'.format(dir_path))
+        subprocess.Popen(['explorer', dir_path])
+        return True
+    elif system == "macos":
+        subprocess.Popen(['open', dir_path])
+        return True
+    elif system == "linux":
+        subprocess.Popen(['xdg-open', dir_path])
         return True
 
     return False

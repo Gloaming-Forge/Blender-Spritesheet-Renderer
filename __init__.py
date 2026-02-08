@@ -1,37 +1,21 @@
-# Disable undefined-variable because our module imports are dynamic
-#pylint: disable=undefined-variable
+"""Spritesheet Renderer - Blender extension for automated spritesheet rendering.
 
-bl_info = {
-    "name": "Spritesheet Renderer",
-    "description": "Add-on automating the process of rendering a 3D model as a spritesheet.",
-    "author": "Chris Hayes",
-    "version": (2, 2, 0),
-    "blender": (2, 90, 0),
-    "location": "View3D > UI > Spritesheet",
-    "support": "COMMUNITY",
-    "tracker": "https://github.com/chrishayesmu/Blender-Spritesheet-Renderer/issues",
-    "category": "Animation"
-}
+Modernized for Blender 4.2+ / 5.0. Based on chrishayesmu/Blender-Spritesheet-Renderer.
+"""
 
 import bpy
 from bpy.app.handlers import persistent
 import functools
 import importlib
-import math
-import os
 import sys
-from typing import Any, Callable, List, Type, Union
+from typing import Callable, List, Type, Union
 
-# Local files
-ADDON_DIR = os.path.dirname(os.path.realpath(__file__))
-if not ADDON_DIR in sys.path:
-    sys.path.append(ADDON_DIR)
+print(f"[SpritesheetRenderer] Loading addon under Blender version {bpy.app.version_string} "
+      f"and Python version {sys.version}")
 
-print(f"[SpritesheetRenderer] Loading addon under Blender version {bpy.app.version_string} and Python version {sys.version}")
-
-# Pretty hacky here: we define all the modules as strings and load them dynamically so that we can easily reload them multiple times
-# Otherwise we have to load and reload them in dependency order and frequently we find our changes not taking effect during development
-module_defs = [
+# Module definitions for dynamic loading/reloading during development.
+# Tuples represent (package, [submodules]).
+_module_defs = [
     "utils",
     "property_groups",
     "operators",
@@ -39,41 +23,44 @@ module_defs = [
     "preferences",
     "ui_lists",
     "ui_panels",
-    ("util", ["Bounds", "Camera", "FileSystemUtil", "ImageMagick", "Register", "SceneSnapshot", "StringUtil", "TerminalOutput", "UIUtil"])
+    ("util", [
+        "Bounds", "Camera", "FileSystemUtil", "ImageMagick",
+        "Register", "SceneSnapshot", "StringUtil", "TerminalOutput", "UIUtil"
+    ])
 ]
 
-_locals = locals()
-_modules = []
-for module_def in module_defs:
-    if isinstance(module_def, str):
-        print(f"[SpritesheetRenderer] Loading module {module_def}")
+_loaded_modules = {}
 
-        module = importlib.import_module("." + module_def, __name__)
-        importlib.reload(module)
+def _load_modules():
+    """Load all addon submodules using relative imports."""
+    for module_def in _module_defs:
+        if isinstance(module_def, str):
+            mod = importlib.import_module("." + module_def, __name__)
+            importlib.reload(mod)
+            _loaded_modules[module_def] = mod
+        elif isinstance(module_def, tuple):
+            pkg_name, submods = module_def
+            for submod_name in submods:
+                full_name = f".{pkg_name}.{submod_name}"
+                mod = importlib.import_module(full_name, __name__)
+                importlib.reload(mod)
+                _loaded_modules[submod_name] = mod
 
-        _locals[module_def] = module
-        _modules.append(module)
-    elif isinstance(module_def, tuple):
-        module_name = module_def[0]
-        submods = module_def[1]
+_load_modules()
 
-        # Don't add the parent module into locals, only submodules
-        for submod_name in submods:
-            print(f"[SpritesheetRenderer] Loading module {module_name}.{submod_name}")
+# Make loaded modules accessible as module-level names
+utils = _loaded_modules["utils"]
+property_groups = _loaded_modules["property_groups"]
+operators = _loaded_modules["operators"]
+render_operator = _loaded_modules["render_operator"]
+preferences = _loaded_modules["preferences"]
+ui_lists = _loaded_modules["ui_lists"]
+ui_panels = _loaded_modules["ui_panels"]
+Register = _loaded_modules["Register"]
+UIUtil = _loaded_modules["UIUtil"]
 
-            submodule = importlib.import_module("." + module_name + "." + submod_name, __name__)
-            importlib.reload(submodule)
+print("[SpritesheetRenderer] All internal modules loaded")
 
-            _locals[submod_name] = submodule
-            _modules.append(submodule)
-
-print("[SpritesheetRenderer] Internal modules loaded; reloading all to pick up latest versions")
-
-# Reload everything again just to be sure the latest changes are picked up
-for mod in _modules:
-    importlib.reload(mod)
-
-print("[SpritesheetRenderer] All internal modules reloaded")
 
 # This operator is in the main file so it has the correct module path
 class SPRITESHEET_OT_ShowAddonPrefsOperator(bpy.types.Operator):
@@ -82,27 +69,43 @@ class SPRITESHEET_OT_ShowAddonPrefsOperator(bpy.types.Operator):
     bl_description = "Opens the addon preferences for Spritesheet Renderer"
 
     def execute(self, _context):
-        bpy.ops.preferences.addon_show(module = __package__)
+        bpy.ops.preferences.addon_show(module=__package__)
         return {'FINISHED'}
 
+
 def check_animation_state():
-    # Periodically check whether animations are playing so we can keep our animation set
-    # status up-to-date. Unfortunately there's no event handler for animation playback starting/stopping.
-    if not bpy.context.screen.is_animation_playing:
-        props = bpy.context.scene.SpritesheetPropertyGroup
+    """Periodically check whether animations are playing so we can keep our animation set
+    status up-to-date. Unfortunately there's no event handler for animation playback
+    starting/stopping."""
+    # context.screen is None in --background mode
+    screen = getattr(bpy.context, 'screen', None)
+    if screen is None:
+        return 1.0
 
-        for animation_set in props.animation_options.animation_sets:
-            animation_set.is_previewing = False
+    try:
+        if not screen.is_animation_playing:
+            props = bpy.context.scene.SpritesheetPropertyGroup
+            for animation_set in props.animation_options.animation_sets:
+                animation_set.is_previewing = False
+    except RuntimeError:
+        # Context may be temporarily invalid (e.g. during file load)
+        pass
 
-    return 1.0 # check every second for responsiveness, since this is cheap
+    return 1.0  # check every second
 
-def find_image_magick_exe():
-    # Only look for the exe if the path isn't already set
-    if not preferences.PrefsAccess.image_magick_path:
-        bpy.ops.spritesheet.prefs_locate_imagemagick()
+
+def _find_image_magick_exe():
+    """Try to auto-detect ImageMagick if the path isn't already set.
+    NOTE: Phase 2 will remove ImageMagick dependency entirely."""
+    try:
+        if not preferences.PrefsAccess.image_magick_path:
+            bpy.ops.spritesheet.prefs_locate_imagemagick()
+    except Exception as e:
+        print(f"[SpritesheetRenderer] Auto-detect ImageMagick failed: {e}")
+
 
 @persistent
-def initialize_collections(_unused: None):
+def _initialize_collections(_unused: None):
     """Initializes certain CollectionProperty objects that otherwise would be empty."""
     props = bpy.context.scene.SpritesheetPropertyGroup
 
@@ -112,31 +115,29 @@ def initialize_collections(_unused: None):
     if len(props.rotation_options.targets) == 0:
         props.rotation_options.targets.add()
 
-    ### Initialize animation sets
+    # Initialize animation sets
     if len(props.animation_options.animation_sets) == 0:
-        # spritesheet.add_animation_set's poll method requires control_animations to be true, so temporarily set it
         control_animations = props.animation_options.control_animations
         props.animation_options.control_animations = True
         bpy.ops.spritesheet.add_animation_set()
         props.animation_options.control_animations = control_animations
 
-    for i in range(0, len(props.animation_options.animation_sets)):
+    for i in range(len(props.animation_options.animation_sets)):
         ui_panels.SPRITESHEET_PT_AnimationSetPanel.create_sub_panel(i)
 
-    ### Initialize material sets
-
+    # Initialize material sets
     if len(props.material_options.material_sets) == 0:
-        # spritesheet.add_material_set's poll method requires control_materials to be true, so temporarily set it
         control_materials = props.material_options.control_materials
         props.material_options.control_materials = True
         bpy.ops.spritesheet.add_material_set()
         props.material_options.control_materials = control_materials
 
-    for i in range(0, len(props.material_options.material_sets)):
+    for i in range(len(props.material_options.material_sets)):
         ui_panels.SPRITESHEET_PT_MaterialSetPanel.create_sub_panel(i)
 
+
 @persistent
-def reset_reporting_props(_unused: None):
+def _reset_reporting_props(_unused: None):
     reporting_props = bpy.context.scene.ReportingPropertyGroup
 
     reporting_props.current_frame_num = 0
@@ -147,8 +148,9 @@ def reset_reporting_props(_unused: None):
     reporting_props.output_directory = ""
     reporting_props.total_num_frames = 0
 
+
 classes: List[Union[Type[bpy.types.Panel], Type[bpy.types.UIList], Type[bpy.types.Operator]]] = [
-    # Property groups
+    # Property groups (order matters: dependencies first)
     property_groups.AnimationSetTargetPropertyGroup,
     property_groups.AnimationSetPropertyGroup,
     property_groups.AnimationOptionsPropertyGroup,
@@ -205,29 +207,46 @@ classes: List[Union[Type[bpy.types.Panel], Type[bpy.types.UIList], Type[bpy.type
     ui_panels.SPRITESHEET_PT_JobManagementPanel
 ]
 
+_timers: List[Callable] = []
+
+
+def _start_timer(func: Callable, make_partial: bool = False,
+                 first_interval: float = 0, is_persistent: bool = False):
+    if make_partial:
+        func = functools.partial(func, None)
+
+    bpy.app.timers.register(func, first_interval=first_interval, persistent=is_persistent)
+    _timers.append(func)
+
+
 def register():
     for cls in classes:
         Register.register_class(cls)
 
-    bpy.types.Scene.SpritesheetPropertyGroup = bpy.props.PointerProperty(type = property_groups.SpritesheetPropertyGroup)
-    bpy.types.Scene.ReportingPropertyGroup = bpy.props.PointerProperty(type = property_groups.ReportingPropertyGroup)
+    bpy.types.Scene.SpritesheetPropertyGroup = bpy.props.PointerProperty(
+        type=property_groups.SpritesheetPropertyGroup
+    )
+    bpy.types.Scene.ReportingPropertyGroup = bpy.props.PointerProperty(
+        type=property_groups.ReportingPropertyGroup
+    )
 
-    # Most handlers need to happen when the addon is enabled and also when a new .blend file is opened
-    start_timer(check_animation_state, first_interval = .1, is_persistent = True)
-    start_timer(find_image_magick_exe, first_interval = .1)
-    start_timer(initialize_collections, make_partial = True)
-    start_timer(reset_reporting_props, make_partial = True)
+    # Timers for initialization and periodic checks
+    _start_timer(check_animation_state, first_interval=0.1, is_persistent=True)
+    _start_timer(_find_image_magick_exe, first_interval=0.1)
+    _start_timer(_initialize_collections, make_partial=True)
+    _start_timer(_reset_reporting_props, make_partial=True)
 
-    bpy.app.handlers.load_post.append(initialize_collections)
-    bpy.app.handlers.load_post.append(reset_reporting_props)
+    bpy.app.handlers.load_post.append(_initialize_collections)
+    bpy.app.handlers.load_post.append(_reset_reporting_props)
+
 
 def unregister():
-    for timer in timers:
+    for timer in _timers:
         if bpy.app.timers.is_registered(timer):
             bpy.app.timers.unregister(timer)
 
-    bpy.app.handlers.load_post.remove(initialize_collections)
-    bpy.app.handlers.load_post.remove(reset_reporting_props)
+    bpy.app.handlers.load_post.remove(_initialize_collections)
+    bpy.app.handlers.load_post.remove(_reset_reporting_props)
 
     del bpy.types.Scene.ReportingPropertyGroup
     del bpy.types.Scene.SpritesheetPropertyGroup
@@ -237,16 +256,7 @@ def unregister():
     for cls in reversed(classes):
         Register.unregister_class(cls)
 
-timers: List[Callable] = []
 
-def start_timer(func: Callable, make_partial: bool = False, first_interval: float = 0, is_persistent: bool = False):
-    if make_partial:
-        func = functools.partial(func, None)
-
-    bpy.app.timers.register(func, first_interval = first_interval, persistent = is_persistent)
-    timers.append(func)
-
-# This allows you to run the script directly from Blender's Text editor
-# to test the add-on without having to install it.
+# Allow running from Blender's Text editor for testing
 if __name__ == "__main__":
     register()

@@ -1,0 +1,25 @@
+schema_version = "1.0.0"
+
+id = "spritesheet_renderer"
+version = "3.0.0"
+name = "Spritesheet Renderer"
+tagline = "Automate rendering 3D models as spritesheets"
+maintainer = "Gloaming Forge <https://github.com/Gloaming-Forge>"
+type = "add-on"
+
+# Based on chrishayesmu/Blender-Spritesheet-Renderer (MIT license)
+# Forked and modernized for Blender 4.2+ / 5.0
+
+website = "https://github.com/Gloaming-Forge/Blender-Spritesheet-Renderer"
+
+# Minimum supported Blender version (extensions API requires 4.2+)
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+# Category tags for Blender's extension browser
+tags = ["Render", "Animation"]
+
+# Permissions required by this extension
+[permissions]
+files = "Read/write rendered sprite frames and spritesheet output files"

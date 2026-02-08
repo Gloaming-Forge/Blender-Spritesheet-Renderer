@@ -145,3 +145,6 @@ Releases
 
 # Preferences file created by local testing
 __prefs.json
+
+# Blender extension build output
+*.zip

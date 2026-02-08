@@ -96,6 +96,38 @@ def rotate_objects(objects: Iterable[bpy.types.Object], x_rot_degrees: Optional[
 
         obj.rotation_euler = (x_rot, y_rot, z_rot)
 
+def set_action_on_object(obj: bpy.types.Object, action: Optional[bpy.types.Action]):
+    """Assign an action to an object, handling Blender 5.0+ slotted actions.
+
+    In Blender 5.0+, actions use a slot system. After assigning an action,
+    we need to find/assign the correct slot for the target object.
+    In older versions, simple action assignment is sufficient.
+    """
+    obj.animation_data.action = action
+
+    if action is None:
+        return
+
+    # Blender 5.0+ slotted actions: find and assign the right slot
+    anim_data = obj.animation_data
+    if not hasattr(anim_data, 'action_slot'):
+        return  # Pre-5.0, no slot system
+
+    # If there's only one slot, or if Blender auto-assigned one, we're done
+    if anim_data.action_slot is not None:
+        return
+
+    # Try to find a slot that matches this object
+    if hasattr(action, 'slots'):
+        for slot in action.slots:
+            if hasattr(slot, 'target_id') and slot.target_id == obj:
+                anim_data.action_slot = slot
+                return
+        # No matching slot found - use the first slot if available
+        if len(action.slots) > 0:
+            anim_data.action_slot = action.slots[0]
+
+
 def tag_redraw_area(context: bpy.types.Context, area_type: str):
     for area in context.window.screen.areas:
         if area.type == area_type:
