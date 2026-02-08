@@ -3,8 +3,7 @@ from copy import deepcopy
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import preferences
-
+from . import preferences
 from .render_operator import SPRITESHEET_OT_RenderSpritesheetOperator
 from .util import FileSystemUtil, StringUtil, UIUtil
 
@@ -211,7 +210,7 @@ class SPRITESHEET_PT_AnimationSetPanel():
         row = self.layout.row(align = True)
         row.operator("spritesheet.remove_animation_set", text = "Remove Set", icon = "REMOVE").index = self.index
 
-        if context.screen.is_animation_playing and animation_set.is_previewing:
+        if getattr(context.screen, 'is_animation_playing', False) and animation_set.is_previewing:
             row.operator("screen.animation_cancel", text = "Pause Playback", icon = "PAUSE").restore_frame = False
         else:
             row.operator("spritesheet.play_animation_set", text = "Play in Viewport", icon = "PLAY").index = self.index

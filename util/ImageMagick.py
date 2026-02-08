@@ -1,3 +1,10 @@
+"""ImageMagick subprocess wrapper for spritesheet assembly.
+
+TODO(Phase 2): This entire module will be replaced with Python-native spritesheet
+assembly using Pillow (PIL) or Blender's native bpy.types.Image API, eliminating the
+external ImageMagick dependency. See spritesheet_renderer_modernization_analysis.md.
+"""
+
 import glob
 import math
 import os

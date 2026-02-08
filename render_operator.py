@@ -10,8 +10,7 @@ import time
 import traceback
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-import preferences
-
+from . import preferences
 from .property_groups import AnimationSetPropertyGroup, MaterialSetPropertyGroup, ReportingPropertyGroup, SpritesheetPropertyGroup
 from .util import Camera as CameraUtil
 from .util import ImageMagick
@@ -59,7 +58,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                 bpy.app.timers.register(utils.force_redraw_ui, first_interval = 0.05, persistent = False)
 
             return is_valid
-        except:
+        except Exception:
             traceback.print_exc()
             return False
 
@@ -98,6 +97,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
     @classmethod
     def _validate_image_magick_install(cls, _context: bpy.types.Context) -> Tuple[bool, Optional[str]]:
+        # TODO(Phase 2): Remove this validator once ImageMagick is replaced with native assembly
         if not preferences.PrefsAccess.image_magick_path:
             return (False, "ImageMagick path is not set in Addon Preferences.")
 
@@ -257,12 +257,13 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         self._terminal_writer.write("\n\n---------- Starting spritesheet render job ----------\n\n")
 
+        # TODO(Phase 2): Replace ImageMagick validation with native assembly check
         try:
             succeeded, error = ImageMagick.validate_image_magick_at_path()
             if not succeeded:
                 self._error = "ImageMagick check failed\n" + error
                 return
-        except:
+        except Exception:
             self._error = "Failed to validate ImageMagick executable. Check that the path is correct in Addon Preferences."
             return
 
@@ -443,11 +444,14 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         completion_message = "Rendering complete in " + time_string if sanity_checks_passed else "Rendering FAILED after " + time_string
 
         # Final output: show operator total time and a large completion message to be easily noticed
-        term_size = os.get_terminal_size()
+        try:
+            term_cols = os.get_terminal_size().columns
+        except (ValueError, OSError):
+            term_cols = 80  # fallback for background/headless mode
         self._terminal_writer.write("\n")
-        self._terminal_writer.write(term_size.columns * "=" + "\n")
-        self._terminal_writer.write( (term_size.columns // 2) * " " + completion_message + "\n")
-        self._terminal_writer.write(term_size.columns * "=" + "\n\n")
+        self._terminal_writer.write(term_cols * "=" + "\n")
+        self._terminal_writer.write((term_cols // 2) * " " + completion_message + "\n")
+        self._terminal_writer.write(term_cols * "=" + "\n\n")
 
         return
 
@@ -585,6 +589,14 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         # TODO this should strip characters that aren't legal on the file system
         return string.replace(' ', '_').replace('/', '_').replace('(', '').replace(')', '').lower()
 
+    @staticmethod
+    def _get_terminal_columns(fallback: int = 80) -> int:
+        """Get terminal width, with fallback for background/headless mode."""
+        try:
+            return os.get_terminal_size().columns
+        except (ValueError, OSError):
+            return fallback
+
     def _get_next_job_id(self) -> int:
         self._next_job_id += 1
         return self._next_job_id
@@ -690,7 +702,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         text_prefix = f"{title} {numbers_display}"
 
         if width is None:
-            width = os.get_terminal_size().columns - len(text_prefix) - 10
+            width = self._get_terminal_columns() - len(text_prefix) - 10
 
         progress_percent = numerator / denominator
         completed_places = math.floor(progress_percent * width)
@@ -827,11 +839,12 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
             time_remaining_string = f"Time remaining: {StringUtil.time_as_string(reporting_props.estimated_time_remaining, precision = 2)}"
 
             # Make the strings repeat on the right side of the terminal, with a small indent
-            columns_remaining = os.get_terminal_size().columns - len(time_elapsed_string) - 10
+            term_cols = self._get_terminal_columns()
+            columns_remaining = term_cols - len(time_elapsed_string) - 10
             fmt_string = "{0} {1:>" + str(columns_remaining) + "}\n"
             time_elapsed_string = fmt_string.format(time_elapsed_string, time_elapsed_string)
 
-            columns_remaining = os.get_terminal_size().columns - len(time_remaining_string) - 10
+            columns_remaining = term_cols - len(time_remaining_string) - 10
             fmt_string = "{0} {1:>" + str(columns_remaining) + "}\n\n"
             time_remaining_string = fmt_string.format(time_remaining_string, time_remaining_string)
 
@@ -860,6 +873,7 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
         reporting_props.current_frame_num += 1
 
+    # TODO(Phase 2): Replace _run_image_magick with native Python spritesheet assembly
     def _run_image_magick(self, props: SpritesheetPropertyGroup, reporting_props: ReportingPropertyGroup, material_set_index: int, animation_set: AnimationSetPropertyGroup,
                           total_num_frames: int, temp_dir_path: str, rotation_angle: int) -> Dict[str, Any]:
         job_id = self._get_next_job_id()
@@ -917,6 +931,10 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
         scene.render.image_settings.file_format = 'PNG'
         scene.render.image_settings.color_mode = 'RGBA'
         scene.render.film_transparent = True  # Transparent PNG
-        scene.render.bake_margin = 0
+        # bake_margin was renamed to bake_margin_size in Blender 3.6+
+        if hasattr(scene.render, 'bake_margin_size'):
+            scene.render.bake_margin_size = 0
+        elif hasattr(scene.render, 'bake_margin'):
+            scene.render.bake_margin = 0
         scene.render.resolution_x = props.sprite_size[0]
         scene.render.resolution_y = props.sprite_size[1]

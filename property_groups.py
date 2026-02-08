@@ -279,12 +279,17 @@ class CameraOptionsPropertyGroup(bpy.types.PropertyGroup):
         return (True, None)
 
 class MaterialSetTargetPropertyGroup(bpy.types.PropertyGroup):
-    # All of these types have a materials property
-    # Keep in sync with description of "target" property
-    _valid_target_types = { "CURVE", "GPENCIL", "MESH", "META", "VOLUME" }
+    # All of these types have a materials property.
+    # Blender 4.0+ renamed GPENCIL to GREASEPENCIL; include both for compatibility.
+    _valid_target_types = {"CURVE", "GPENCIL", "GREASEPENCIL", "MESH", "META", "VOLUME"}
 
     def _is_obj_valid_target(self, obj):
         return obj.type in MaterialSetTargetPropertyGroup._valid_target_types
+
+    @staticmethod
+    def _is_grease_pencil_type(obj_type):
+        """Check if an object type is any variant of grease pencil (legacy or v3)."""
+        return obj_type in {"GPENCIL", "GREASEPENCIL"}
 
     def _is_mat_valid_for_target(self, mat):
         # Non-grease-pencil materials are valid for everything
@@ -292,7 +297,7 @@ class MaterialSetTargetPropertyGroup(bpy.types.PropertyGroup):
             return True
 
         # Grease pencil materials can only be used with grease pencil objects
-        if self.target is not None and self.target.type == "GPENCIL":
+        if self.target is not None and self._is_grease_pencil_type(self.target.type):
             return True
 
         return False
@@ -326,7 +331,7 @@ class MaterialSetPropertyGroup(bpy.types.PropertyGroup):
         if not mat.is_grease_pencil:
             return True
 
-        if all(item.target is not None and item.target.type == "GPENCIL" for item in self.materials):
+        if all(item.target is not None and MaterialSetTargetPropertyGroup._is_grease_pencil_type(item.target.type) for item in self.materials):
             return True
 
         return False
@@ -376,9 +381,9 @@ class MaterialSetPropertyGroup(bpy.types.PropertyGroup):
             raise ValueError("Material set is not in a valid state to assign materials")
 
         for index, prop in enumerate(self.materials):
-
             if len(prop.target.material_slots) == 0:
-                prop.target.material_slots.new(None)
+                # Add a material slot via the data block (material_slots has no .new() method)
+                prop.target.data.materials.append(None)
 
             prop.target.material_slots[0].material = self.material_at(index)
 
