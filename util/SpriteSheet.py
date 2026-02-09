@@ -36,6 +36,13 @@ def assemble_frames_into_spritesheet(
     try:
         files = sorted(glob.glob(os.path.join(temp_dir_path, "*.png")))
 
+        if total_num_frames <= 0:
+            return {
+                "args": _empty_args(files, output_file_path),
+                "stderr": f"No frames to assemble (total_num_frames={total_num_frames})",
+                "succeeded": False,
+            }
+
         if len(files) != total_num_frames:
             return {
                 "args": _empty_args(files, output_file_path),
@@ -51,16 +58,18 @@ def assemble_frames_into_spritesheet(
 
         sheet = Image.new("RGBA", (sheet_w, sheet_h), (0, 0, 0, 0))
 
-        for i, frame_path in enumerate(files):
-            frame = Image.open(frame_path)
-            x = (i % num_columns) * sprite_size[0]
-            y = (i // num_columns) * sprite_size[1]
-            sheet.paste(frame, (x, y))
-            frame.close()
+        try:
+            for i, frame_path in enumerate(files):
+                frame = Image.open(frame_path)
+                x = (i % num_columns) * sprite_size[0]
+                y = (i // num_columns) * sprite_size[1]
+                sheet.paste(frame, (x, y))
+                frame.close()
 
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-        sheet.save(output_file_path, "PNG")
-        sheet.close()
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            sheet.save(output_file_path, "PNG")
+        finally:
+            sheet.close()
 
         args = {
             "inputFiles": files,
@@ -110,13 +119,16 @@ def trim_and_resize_image_ignore_aspect(image_path: str, size: Tuple[int, int]) 
         # Trim: find the bounding box of non-transparent content
         bbox = img.getbbox()
         if bbox:
-            img = img.crop(bbox)
+            cropped = img.crop(bbox)
+            img.close()
+            img = cropped
 
         # Resize to exact target, ignoring aspect ratio (matches ImageMagick's "!" flag)
-        img = img.resize((size[0], size[1]), Image.LANCZOS)
-
-        img.save(image_path, "PNG")
+        resized = img.resize((size[0], size[1]), Image.Resampling.LANCZOS)
         img.close()
+
+        resized.save(image_path, "PNG")
+        resized.close()
         return True
     except Exception:
         return False

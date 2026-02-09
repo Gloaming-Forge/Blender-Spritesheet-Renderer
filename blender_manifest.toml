@@ -23,3 +23,18 @@ tags = ["Render", "Animation"]
 # Permissions required by this extension
 [permissions]
 files = "Read/write rendered sprite frames and spritesheet output files"
+
+# Pillow is required for native spritesheet assembly (replaced external ImageMagick dependency).
+# Download platform wheels before building:
+#   pip download Pillow -d ./wheels/ --python-version 3.11 --only-binary=:all: \
+#     --platform manylinux_2_28_x86_64
+#   pip download Pillow -d ./wheels/ --python-version 3.11 --only-binary=:all: \
+#     --platform win_amd64
+#   pip download Pillow -d ./wheels/ --python-version 3.11 --only-binary=:all: \
+#     --platform macosx_11_0_arm64
+# Then list the downloaded .whl filenames below.
+wheels = [
+    "./wheels/Pillow-11.1.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+    "./wheels/Pillow-11.1.0-cp311-cp311-win_amd64.whl",
+    "./wheels/Pillow-11.1.0-cp311-cp311-macosx_11_0_arm64.whl",
+]
