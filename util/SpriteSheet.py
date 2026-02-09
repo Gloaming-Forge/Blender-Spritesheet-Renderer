@@ -99,7 +99,11 @@ def pad_image_to_size(image_path: str, size: Tuple[int, int]) -> bool:
             return True
 
         padded = Image.new("RGBA", (size[0], size[1]), (0, 0, 0, 0))
-        padded.paste(img, (0, 0))
+        try:
+            padded.paste(img, (0, 0))
+        except Exception:
+            padded.close()
+            raise
 
     padded.save(image_path, "PNG")
     padded.close()
@@ -114,17 +118,22 @@ def trim_and_resize_image_ignore_aspect(image_path: str, size: Tuple[int, int]) 
     with Image.open(image_path) as img:
         rgba = img.convert("RGBA")
 
-    # Trim: find the bounding box of non-transparent content
-    bbox = rgba.getbbox()
-    if bbox:
-        cropped = rgba.crop(bbox)
-        rgba.close()
-        rgba = cropped
+    try:
+        # Trim: find the bounding box of non-transparent content
+        bbox = rgba.getbbox()
+        if bbox:
+            cropped = rgba.crop(bbox)
+            rgba.close()
+            rgba = cropped
 
-    # Resize to exact target, ignoring aspect ratio (matches ImageMagick's "!" flag).
-    # NEAREST preserves sharp edges for pixel art / sprite content.
-    resized = rgba.resize((size[0], size[1]), Image.Resampling.NEAREST)
-    rgba.close()
+        # Resize to exact target, ignoring aspect ratio (matches ImageMagick's "!" flag).
+        # NEAREST preserves sharp edges for pixel art / sprite content.
+        resized = rgba.resize((size[0], size[1]), Image.Resampling.NEAREST)
+    except Exception:
+        rgba.close()
+        raise
+    else:
+        rgba.close()
 
     resized.save(image_path, "PNG")
     resized.close()
