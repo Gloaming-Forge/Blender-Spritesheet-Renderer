@@ -24,7 +24,7 @@ _module_defs = [
     "ui_lists",
     "ui_panels",
     ("util", [
-        "Bounds", "Camera", "FileSystemUtil", "ImageMagick",
+        "Bounds", "Camera", "FileSystemUtil", "SpriteSheet",
         "Register", "SceneSnapshot", "StringUtil", "TerminalOutput", "UIUtil"
     ])
 ]
@@ -92,16 +92,6 @@ def check_animation_state():
         pass
 
     return 1.0  # check every second
-
-
-def _find_image_magick_exe():
-    """Try to auto-detect ImageMagick if the path isn't already set.
-    NOTE: Phase 2 will remove ImageMagick dependency entirely."""
-    try:
-        if not preferences.PrefsAccess.image_magick_path:
-            bpy.ops.spritesheet.prefs_locate_imagemagick()
-    except Exception as e:
-        print(f"[SpritesheetRenderer] Auto-detect ImageMagick failed: {e}")
 
 
 @persistent
@@ -174,7 +164,6 @@ classes: List[Union[Type[bpy.types.Panel], Type[bpy.types.UIList], Type[bpy.type
     operators.SPRITESHEET_OT_AddRotationTargetOperator,
     operators.SPRITESHEET_OT_AssignMaterialSetOperator,
     operators.SPRITESHEET_OT_ConfigureRenderCameraOperator,
-    operators.SPRITESHEET_OT_LocateImageMagickOperator,
     operators.SPRITESHEET_OT_ModifyAnimationSetOperator,
     operators.SPRITESHEET_OT_ModifyMaterialSetOperator,
     operators.SPRITESHEET_OT_MoveCameraTargetDownOperator,
@@ -232,7 +221,6 @@ def register():
 
     # Timers for initialization and periodic checks
     _start_timer(check_animation_state, first_interval=0.1, is_persistent=True)
-    _start_timer(_find_image_magick_exe, first_interval=0.1)
     _start_timer(_initialize_collections, make_partial=True)
     _start_timer(_reset_reporting_props, make_partial=True)
 

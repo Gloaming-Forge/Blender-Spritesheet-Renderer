@@ -50,17 +50,6 @@ class SpritesheetAddonPreferences(bpy.types.AddonPreferences):
         update=_updater(reload_addon_on_change=True)
     )
 
-    # TODO(Phase 2): Remove imageMagickPath once ImageMagick dependency is replaced with
-    # Pillow or native bpy image compositing.
-    imageMagickPath: bpy.props.StringProperty(
-        name="ImageMagick Path",
-        subtype="FILE_PATH",
-        description="The path to the ImageMagick executable (magick or magick.exe)",
-        get=_getter("imageMagickPath", ""),
-        set=_setter("imageMagickPath"),
-        update=_updater()
-    )
-
     @classmethod
     def register(cls):
         try:
@@ -75,13 +64,6 @@ class SpritesheetAddonPreferences(bpy.types.AddonPreferences):
         row = self.layout.row()
         row.prop(self, "displayArea")
 
-        # TODO(Phase 2): Remove ImageMagick UI once dependency is eliminated
-        row = self.layout.row()
-        row.prop(self, "imageMagickPath")
-
-        row = self.layout.row()
-        row.operator("spritesheet.prefs_locate_imagemagick", text="Locate Automatically")
-
 
 class PrefsAccess():
     """Convenience class to simplify accessing addon preferences."""
@@ -90,13 +72,6 @@ class PrefsAccess():
     def display_area(self):
         return bpy.context.preferences.addons[SpritesheetAddonPreferences.bl_idname].preferences.displayArea
 
-    @property
-    def image_magick_path(self):
-        return bpy.context.preferences.addons[SpritesheetAddonPreferences.bl_idname].preferences.imageMagickPath
-
-    @image_magick_path.setter
-    def image_magick_path(self, value: str):
-        bpy.context.preferences.addons[SpritesheetAddonPreferences.bl_idname].preferences.imageMagickPath = value
 
 
 # Replace class with a singleton instance
