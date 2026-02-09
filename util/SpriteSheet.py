@@ -60,11 +60,10 @@ def assemble_frames_into_spritesheet(
 
         try:
             for i, frame_path in enumerate(files):
-                frame = Image.open(frame_path)
-                x = (i % num_columns) * sprite_size[0]
-                y = (i // num_columns) * sprite_size[1]
-                sheet.paste(frame, (x, y))
-                frame.close()
+                with Image.open(frame_path) as frame:
+                    x = (i % num_columns) * sprite_size[0]
+                    y = (i // num_columns) * sprite_size[1]
+                    sheet.paste(frame, (x, y))
 
             os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
             sheet.save(output_file_path, "PNG")
@@ -93,45 +92,43 @@ def pad_image_to_size(image_path: str, size: Tuple[int, int]) -> bool:
     """Pad an image with transparent pixels to reach the target size.
 
     The original image content stays anchored to the upper-left corner (NorthWest gravity).
+    Raises on failure so the caller can report the error.
     """
-    try:
-        img = Image.open(image_path)
+    with Image.open(image_path) as img:
         if img.size == (size[0], size[1]):
-            img.close()
             return True
 
         padded = Image.new("RGBA", (size[0], size[1]), (0, 0, 0, 0))
         padded.paste(img, (0, 0))
-        img.close()
 
-        padded.save(image_path, "PNG")
-        padded.close()
-        return True
-    except Exception:
-        return False
+    padded.save(image_path, "PNG")
+    padded.close()
+    return True
 
 
 def trim_and_resize_image_ignore_aspect(image_path: str, size: Tuple[int, int]) -> bool:
-    """Trim transparent borders from an image, then resize to exact dimensions (ignoring aspect ratio)."""
-    try:
-        img = Image.open(image_path).convert("RGBA")
+    """Trim transparent borders from an image, then resize to exact dimensions (ignoring aspect ratio).
 
-        # Trim: find the bounding box of non-transparent content
-        bbox = img.getbbox()
-        if bbox:
-            cropped = img.crop(bbox)
-            img.close()
-            img = cropped
+    Raises on failure so the caller can report the error.
+    """
+    with Image.open(image_path) as img:
+        rgba = img.convert("RGBA")
 
-        # Resize to exact target, ignoring aspect ratio (matches ImageMagick's "!" flag)
-        resized = img.resize((size[0], size[1]), Image.Resampling.LANCZOS)
-        img.close()
+    # Trim: find the bounding box of non-transparent content
+    bbox = rgba.getbbox()
+    if bbox:
+        cropped = rgba.crop(bbox)
+        rgba.close()
+        rgba = cropped
 
-        resized.save(image_path, "PNG")
-        resized.close()
-        return True
-    except Exception:
-        return False
+    # Resize to exact target, ignoring aspect ratio (matches ImageMagick's "!" flag).
+    # NEAREST preserves sharp edges for pixel art / sprite content.
+    resized = rgba.resize((size[0], size[1]), Image.Resampling.NEAREST)
+    rgba.close()
+
+    resized.save(image_path, "PNG")
+    resized.close()
+    return True
 
 
 def _empty_args(files: List[str], output_file_path: str) -> Dict[str, Any]:

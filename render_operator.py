@@ -876,7 +876,11 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
                 self._report_job("Spritesheet", "Padding not necessary; image output size {} is already power-of-two".format(target_size_str), job_id, reporting_props, is_skipped = True)
             else:
                 self._report_job("Spritesheet", f"Padding output image to power-of-two size {target_size_str}", job_id, reporting_props)
-                SpriteSheet.pad_image_to_size(assembly_output["args"]["outputFilePath"], target_size)
+                try:
+                    SpriteSheet.pad_image_to_size(assembly_output["args"]["outputFilePath"], target_size)
+                except Exception as e:
+                    self._report_job("Spritesheet", f"Failed to pad image: {e}", job_id, reporting_props, is_error = True)
+                    return assembly_output
                 self._report_job("Spritesheet", f"Output image successfully padded to power-of-two size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
 
                 # Record padding in JSON for tool integration
@@ -894,7 +898,11 @@ class SPRITESHEET_OT_RenderSpritesheetOperator(bpy.types.Operator):
 
             # Unlike padding to power-of-two, we can't check the current size, because it could include transparency to trim
             self._report_job("Spritesheet", f"Forcing output image to square size {target_size_str}", job_id, reporting_props)
-            SpriteSheet.trim_and_resize_image_ignore_aspect(assembly_output["args"]["outputFilePath"], target_size)
+            try:
+                SpriteSheet.trim_and_resize_image_ignore_aspect(assembly_output["args"]["outputFilePath"], target_size)
+            except Exception as e:
+                self._report_job("Spritesheet", f"Failed to trim/resize image: {e}", job_id, reporting_props, is_error = True)
+                return assembly_output
             self._report_job("Spritesheet", f"Output image successfully trimmed and resized to square size {target_size_str} from {image_size[0]}x{image_size[1]}", job_id, reporting_props, is_complete = True)
 
         return assembly_output
